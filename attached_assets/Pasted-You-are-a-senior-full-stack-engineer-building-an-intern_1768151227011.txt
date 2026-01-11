@@ -1,0 +1,134 @@
+You are a senior full-stack engineer building an internal product called “EvolvAI Website Factory”.
+
+Goal:
+Create a web dashboard that allows me to:
+1) Upload multiple existing website codebases (zip or Git repo export) that I have built previously.
+2) Convert each codebase into a reusable “template package” with a consistent schema.
+3) Generate a new website project from a selected template + a set of inputs (company name, brand palette, fonts, sections, copy, images, logo, CTA details).
+4) Output a ready-to-run codebase that is already branded and structured to a high standard, so I can iterate to final in ~1 hour instead of 6-8 hours.
+
+Non-negotiables:
+- Make this a practical MVP that works end-to-end.
+- Prioritise reliability, repeatability, and clean separation between “templates” and “client-specific content”.
+- Assume I will run this locally first. Docker support is a plus but not mandatory for MVP.
+- Provide a clean project structure, documentation, and a basic migration path for adding more templates over time.
+- Do NOT create a “toy” UI. Make it professional and usable.
+
+Core outcomes:
+A) A Dashboard Web App (“Factory UI”)
+B) A Template Ingestion Pipeline (“Template Builder”)
+C) A Project Generator (“Scaffold Engine”)
+D) A Versioned output folder per generated site, ready to run and deploy.
+
+Tech choices (choose sensible defaults):
+- Use Next.js (App Router) + TypeScript for the dashboard UI.
+- Use a small backend layer within Next.js API routes OR a separate Node service if needed.
+- Use SQLite for MVP persistence (Prisma is acceptable).
+- Use local filesystem storage for templates and generated outputs for MVP.
+- Avoid overengineering. Make it work, then make it nice.
+
+Key concept:
+Templates are not “raw codebases”. Templates must be standardised into a Template Spec, so the generator can reliably apply branding/content.
+
+Template Spec (must implement):
+Each template must have:
+- templateId, name, description, tags (e.g. “trade”, “premium”, “dark”, “blue theme”, “one-page”, “multi-page”)
+- frameworkType (e.g. nextjs-static, nextjs-app, vite-react, html-static) [you may limit MVP to 1-2 types]
+- fileMap rules: where logo goes, where hero media goes, where copy is stored, where theme variables live
+- tokens:
+  - colors: primary, secondary, accent, bg, surface, text, muted, border
+  - typography: fontFamilyHeading, fontFamilyBody, baseFontSize
+  - spacing/radius: radii, layoutMaxWidth
+- sections registry:
+  - hero, services, testimonials, gallery, about, faq, contact, footer, etc.
+  - each section: enabled true/false, order, content fields, media fields
+- replacement strategy:
+  - for each token and content field: where to apply changes in code (CSS variables, tailwind config, JSON content file, component props, etc.)
+
+MVP constraint (important):
+If it’s too hard to support every framework, pick ONE framework for ingestion + generation MVP (recommended: Next.js + Tailwind). The ingestion pipeline should still exist, but it can “reject” non-conforming templates with clear reasons and a checklist on how to convert them.
+
+Dashboard Features (must build):
+1) Templates page
+   - Upload template (zip)
+   - Name, description, tags
+   - System analyses it and either:
+     a) Accepts and converts to standard template package, or
+     b) Rejects with actionable errors (missing package.json, not Next.js, no tailwind, etc.)
+   - List templates with preview metadata
+
+2) New Site Generator page (wizard)
+   Step 1: Choose template
+   Step 2: Client details
+      - companyName
+      - domain (optional)
+      - slogan/tagline
+      - contact details (phone/email/address)
+      - primary CTA (label + link)
+   Step 3: Brand inputs
+      - color palette picker (or hex inputs)
+      - fonts (Google font names as strings for MVP)
+      - style mode: “EvolvAI Premium Dark”, “Clean Light”, etc. (map to token sets)
+      - upload logo (SVG/PNG)
+      - upload hero image/video
+   Step 4: Page/sections
+      - enable/disable sections
+      - reorder sections
+      - provide copy for each section (simple textareas for MVP)
+   Step 5: Generate
+      - choose output folder name / slug
+      - click Generate
+      - show status logs
+      - show “Run Instructions” (npm install, npm run dev)
+      - provide zip download of generated project
+
+3) Generated Sites page
+   - list generated sites
+   - metadata: template used, createdAt, slug
+   - open folder path / download zip
+
+Template ingestion requirements:
+- When I upload a template zip:
+  - Unzip to /data/templates/raw/<templateId>/
+  - Detect framework type
+  - If compatible, create /data/templates/standard/<templateId>/
+  - Create a template.json (Template Spec) in the standard folder
+  - Identify and document where theme variables are controlled (tailwind.config, globals.css, etc.)
+  - Identify the location of content (if none exists, create a content layer as part of standardisation, e.g. /content/site.json)
+  - Refactor minimal changes necessary to make template “generator-friendly”
+  - Store a preview thumbnail if possible (optional MVP)
+
+Generator requirements:
+- Generate a new project by copying standard template folder to /data/generated/<slug>/
+- Apply tokens:
+  - write to CSS variables or tailwind config
+  - update fonts in layout
+  - place logo file in correct folder and update references
+  - place hero media and update references
+- Apply content:
+  - populate /content/site.json (or equivalent)
+  - ensure the site renders that content dynamically
+- Return a buildable, runnable codebase.
+
+Quality bar:
+- The generated site must compile and run with a single command sequence.
+- The dashboard must give actionable errors when generation fails.
+- Code must be clean, modular, and set up to scale.
+
+Deliverables (what you must output):
+1) Full working project code for the dashboard + backend (in one repo).
+2) A README with:
+   - setup steps
+   - how to add templates
+   - template compatibility rules
+   - how the Template Spec works
+3) A sample “golden template” bundled in the repo so I can test generation immediately.
+4) A short “next upgrades” list (post-MVP) that improves power without changing the MVP architecture.
+
+Implementation plan (must follow):
+Phase 1: Scaffold the Next.js dashboard + SQLite persistence + filesystem directories
+Phase 2: Build template upload + unzip + validation + standard template package creation
+Phase 3: Build generator wizard + generation pipeline + zip export
+Phase 4: Bundle sample template and prove end-to-end generation works
+
+Start now. Create the repo structure, then implement Phase 1 through Phase 4. Do not stop early.
