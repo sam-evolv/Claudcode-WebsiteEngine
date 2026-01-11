@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,8 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
-import { 
-  ChevronRight, 
+import {
+  ChevronRight,
   ChevronLeft,
   Check,
   Layers,
@@ -26,6 +26,8 @@ import {
   Sparkles
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTemplates, useGenerateSite, getDownloadUrl } from "@/lib/api";
+import { toast } from "sonner";
 
 const steps = [
   { id: 1, label: "Template", icon: Layers },
@@ -33,12 +35,6 @@ const steps = [
   { id: 3, label: "Brand", icon: Palette },
   { id: 4, label: "Sections", icon: LayoutGrid },
   { id: 5, label: "Generate", icon: Rocket },
-];
-
-const templates = [
-  { id: "trade-premium-dark", name: "Trade Premium Dark", tags: ["trade", "premium", "dark"] },
-  { id: "clean-light-business", name: "Clean Light Business", tags: ["business", "light", "clean"] },
-  { id: "modern-saas-landing", name: "Modern SaaS Landing", tags: ["saas", "tech", "gradient"] },
 ];
 
 const stylePresets = [
@@ -60,6 +56,14 @@ const defaultSections = [
 ];
 
 export default function Generator() {
+  const { data: templates = [], isLoading: templatesLoading } = useTemplates();
+  const generateMutation = useGenerateSite();
+
+  const readyTemplates = useMemo(
+    () => templates.filter((t) => t.status === 'ready'),
+    [templates]
+  );
+
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [selectedStyle, setSelectedStyle] = useState("evolv-premium-dark");
@@ -67,6 +71,7 @@ export default function Generator() {
   const [generationState, setGenerationState] = useState<'idle' | 'generating' | 'complete'>('idle');
   const [generationLogs, setGenerationLogs] = useState<string[]>([]);
   const [generationProgress, setGenerationProgress] = useState(0);
+  const [generatedSiteId, setGeneratedSiteId] = useState<string | null>(null);
 
   const [clientDetails, setClientDetails] = useState({
     companyName: "",
@@ -94,34 +99,72 @@ export default function Generator() {
     setSections(sections.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
   };
 
-  const startGeneration = () => {
-    setGenerationState('generating');
-    const logs = [
-      "Initializing generation pipeline...",
-      "Copying template files to output directory...",
-      "Applying brand tokens to tailwind.config.ts...",
-      "Updating CSS variables in globals.css...",
-      "Setting up typography: Space Grotesk + Inter...",
-      "Placing logo assets...",
-      "Generating content/site.json...",
-      "Enabling sections: hero, services, about, testimonials, contact, footer...",
-      "Applying client details to metadata...",
-      "Optimizing images...",
-      "Running build validation...",
-      "✓ Build successful! Project ready."
-    ];
+  const startGeneration = async () => {
+    if (!selectedTemplate || !clientDetails.companyName) {
+      toast.error("Please complete all required fields");
+      return;
+    }
 
-    let logIndex = 0;
-    const interval = setInterval(() => {
-      if (logIndex < logs.length) {
-        setGenerationLogs(prev => [...prev, logs[logIndex]]);
-        setGenerationProgress(((logIndex + 1) / logs.length) * 100);
-        logIndex++;
-      } else {
-        clearInterval(interval);
-        setGenerationState('complete');
+    setGenerationState('generating');
+    setGenerationLogs([]);
+    setGenerationProgress(0);
+
+    const slug = clientDetails.companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+    try {
+      const result = await generateMutation.mutateAsync({
+        templateId: selectedTemplate,
+        slug,
+        clientDetails: {
+          companyName: clientDetails.companyName,
+          domain: clientDetails.domain,
+          tagline: clientDetails.tagline,
+          phone: clientDetails.phone,
+          email: clientDetails.email,
+          address: clientDetails.address,
+          ctaLabel: clientDetails.ctaLabel,
+          ctaLink: clientDetails.ctaLink,
+        },
+        brandInputs: {
+          primaryColor: brandInputs.primaryColor,
+          secondaryColor: brandInputs.secondaryColor,
+          accentColor: brandInputs.accentColor,
+          headingFont: brandInputs.headingFont,
+          bodyFont: brandInputs.bodyFont,
+        },
+        sections: sections.map(s => ({
+          id: s.id,
+          enabled: s.enabled,
+          order: s.order,
+        })),
+      });
+
+      // Simulate progress with logs
+      const logs = result.logs || [
+        { message: "Initializing generation pipeline...", type: "info" },
+        { message: "Copying template files to output directory...", type: "info" },
+        { message: "Applying brand tokens to tailwind.config.ts...", type: "info" },
+        { message: "Updating CSS variables in globals.css...", type: "info" },
+        { message: `Setting up typography: ${brandInputs.headingFont} + ${brandInputs.bodyFont}...`, type: "info" },
+        { message: "Generating content/site.json...", type: "info" },
+        { message: `Enabling sections: ${sections.filter(s => s.enabled).map(s => s.id).join(", ")}...`, type: "info" },
+        { message: "Applying client details to metadata...", type: "info" },
+        { message: "✓ Build successful! Project ready.", type: "success" },
+      ];
+
+      for (let i = 0; i < logs.length; i++) {
+        await new Promise(resolve => setTimeout(resolve, 300));
+        setGenerationLogs(prev => [...prev, logs[i].message]);
+        setGenerationProgress(((i + 1) / logs.length) * 100);
       }
-    }, 400);
+
+      setGeneratedSiteId(result.site.id);
+      setGenerationState('complete');
+      toast.success("Website generated successfully!");
+    } catch (error) {
+      setGenerationState('idle');
+      toast.error(error instanceof Error ? error.message : "Generation failed");
+    }
   };
 
   return (
@@ -183,36 +226,49 @@ export default function Generator() {
                   <h2 className="text-xl font-display font-semibold">Choose a Template</h2>
                   <p className="text-muted-foreground mt-1">Select a base template for your new website</p>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {templates.map((template) => (
-                    <div
-                      key={template.id}
-                      className={cn(
-                        "p-6 rounded-xl border-2 cursor-pointer transition-all",
-                        selectedTemplate === template.id
-                          ? "border-primary bg-primary/5"
-                          : "border-border hover:border-primary/50"
-                      )}
-                      onClick={() => setSelectedTemplate(template.id)}
-                      data-testid={`template-option-${template.id}`}
-                    >
-                      <div className="aspect-video rounded-lg bg-muted mb-4 flex items-center justify-center">
-                        <Layers className="w-8 h-8 text-muted-foreground" />
-                      </div>
-                      <h3 className="font-medium text-foreground">{template.name}</h3>
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {template.tags.map(tag => (
-                          <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
-                        ))}
-                      </div>
-                      {selectedTemplate === template.id && (
-                        <div className="mt-3 flex items-center gap-2 text-primary text-sm font-medium">
-                          <CheckCircle2 className="w-4 h-4" /> Selected
+                {templatesLoading ? (
+                  <div className="text-center py-12">
+                    <div className="w-16 h-16 rounded-full border-4 border-primary/20 border-t-primary animate-spin mx-auto mb-4" />
+                    <p className="text-muted-foreground">Loading templates...</p>
+                  </div>
+                ) : readyTemplates.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Layers className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-foreground font-medium">No templates available</p>
+                    <p className="text-sm text-muted-foreground mt-1">Upload a template first to get started</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {readyTemplates.map((template) => (
+                      <div
+                        key={template.id}
+                        className={cn(
+                          "p-6 rounded-xl border-2 cursor-pointer transition-all",
+                          selectedTemplate === template.id
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-primary/50"
+                        )}
+                        onClick={() => setSelectedTemplate(template.id)}
+                        data-testid={`template-option-${template.id}`}
+                      >
+                        <div className="aspect-video rounded-lg bg-muted mb-4 flex items-center justify-center">
+                          <Layers className="w-8 h-8 text-muted-foreground" />
                         </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                        <h3 className="font-medium text-foreground">{template.name}</h3>
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {template.tags.map(tag => (
+                            <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
+                          ))}
+                        </div>
+                        {selectedTemplate === template.id && (
+                          <div className="mt-3 flex items-center gap-2 text-primary text-sm font-medium">
+                            <CheckCircle2 className="w-4 h-4" /> Selected
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -503,7 +559,7 @@ export default function Generator() {
                         <div className="space-y-2 text-sm">
                           <div className="flex justify-between py-2 border-b border-border">
                             <span className="text-muted-foreground">Template</span>
-                            <span className="font-medium">{templates.find(t => t.id === selectedTemplate)?.name || 'Not selected'}</span>
+                            <span className="font-medium">{readyTemplates.find(t => t.id === selectedTemplate)?.name || 'Not selected'}</span>
                           </div>
                           <div className="flex justify-between py-2 border-b border-border">
                             <span className="text-muted-foreground">Company</span>
@@ -580,13 +636,24 @@ export default function Generator() {
                       </CardContent>
                     </Card>
                     <div className="flex items-center justify-center gap-4">
-                      <Button variant="outline" className="gap-2" data-testid="button-download-zip">
-                        <Download className="w-4 h-4" />
-                        Download ZIP
-                      </Button>
-                      <Button className="gap-2" data-testid="button-open-folder">
+                      {generatedSiteId && (
+                        <Button
+                          variant="outline"
+                          className="gap-2"
+                          onClick={() => window.open(getDownloadUrl(generatedSiteId), '_blank')}
+                          data-testid="button-download-zip"
+                        >
+                          <Download className="w-4 h-4" />
+                          Download ZIP
+                        </Button>
+                      )}
+                      <Button
+                        className="gap-2"
+                        onClick={() => window.location.href = '/generated'}
+                        data-testid="button-view-sites"
+                      >
                         <ExternalLink className="w-4 h-4" />
-                        Open in Editor
+                        View Generated Sites
                       </Button>
                     </div>
                   </div>
