@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -43,9 +43,35 @@ export default function Templates() {
     t.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
+  const [isDragging, setIsDragging] = React.useState(false);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setSelectedFile(e.target.files[0]);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (files && files[0]) {
+      if (files[0].name.endsWith('.zip')) {
+        setSelectedFile(files[0]);
+      } else {
+        toast.error("Please upload a ZIP file");
+      }
     }
   };
 
@@ -165,21 +191,62 @@ export default function Templates() {
 
                 <div className="space-y-2">
                   <Label htmlFor="template-file">Template File (ZIP) *</Label>
-                  <div className="relative">
-                    <Input
+                  <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    className={cn(
+                      "border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer",
+                      isDragging
+                        ? "border-primary bg-primary/5 scale-[1.02]"
+                        : "border-muted hover:border-primary/50 hover:bg-primary/5",
+                      selectedFile && "border-primary bg-primary/5"
+                    )}
+                    onClick={() => document.getElementById('template-file')?.click()}
+                  >
+                    <input
                       id="template-file"
                       type="file"
                       accept=".zip"
                       onChange={handleFileChange}
-                      className="cursor-pointer"
+                      className="hidden"
                       data-testid="input-template-file"
                     />
+                    {selectedFile ? (
+                      <div className="space-y-2">
+                        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
+                          <Upload className="w-6 h-6 text-primary" />
+                        </div>
+                        <p className="font-medium text-foreground">{selectedFile.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                        </p>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedFile(null);
+                          }}
+                        >
+                          Change File
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <Upload className="w-10 h-10 text-muted-foreground mx-auto" />
+                        <div>
+                          <p className="text-sm text-foreground font-medium">
+                            <span className="text-primary">Click to upload</span> or drag and drop
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            ZIP files up to 100MB
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  {selectedFile && (
-                    <p className="text-sm text-muted-foreground">
-                      Selected: {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
-                    </p>
-                  )}
                 </div>
 
                 <Button
