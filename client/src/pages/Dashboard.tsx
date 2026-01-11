@@ -2,30 +2,113 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { 
-  Layers, 
-  Wand2, 
-  FolderOutput, 
-  ArrowRight, 
-  Clock, 
+import {
+  Layers,
+  Wand2,
+  FolderOutput,
+  ArrowRight,
+  Clock,
   Sparkles,
   TrendingUp
 } from "lucide-react";
-
-const stats = [
-  { label: "Templates", value: "5", icon: Layers, change: "+2 this week" },
-  { label: "Generated Sites", value: "23", icon: FolderOutput, change: "+8 this month" },
-  { label: "Time Saved", value: "147h", icon: Clock, change: "vs manual builds" },
-];
-
-const recentActivity = [
-  { type: "generated", name: "Elite Plumbing Pro", template: "Trade Premium Dark", time: "2 hours ago" },
-  { type: "template", name: "Modern SaaS Landing", template: null, time: "Yesterday" },
-  { type: "generated", name: "Smith & Sons Electric", template: "Trade Premium Dark", time: "2 days ago" },
-  { type: "generated", name: "Coastal Roofing", template: "Clean Light Business", time: "3 days ago" },
-];
+import { useTemplates, useGeneratedSites } from "@/lib/api";
+import { useMemo } from "react";
 
 export default function Dashboard() {
+  const { data: templates = [], isLoading: templatesLoading } = useTemplates();
+  const { data: sites = [], isLoading: sitesLoading } = useGeneratedSites();
+
+  // Calculate stats from real data
+  const stats = useMemo(() => {
+    const readyTemplates = templates.filter(t => t.status === 'ready').length;
+    const totalSites = sites.length;
+
+    // Calculate sites generated in the last 30 days
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const recentSites = sites.filter(s => new Date(s.createdAt) > thirtyDaysAgo).length;
+
+    // Calculate sites generated in the last 7 days
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const weekSites = sites.filter(s => new Date(s.createdAt) > sevenDaysAgo).length;
+
+    // Estimate time saved (6 hours per site vs 1 hour with factory = 5 hours saved per site)
+    const timeSaved = totalSites * 5;
+
+    return [
+      {
+        label: "Templates",
+        value: readyTemplates.toString(),
+        icon: Layers,
+        change: templates.length > readyTemplates ? `${templates.length - readyTemplates} processing` : "All ready",
+        isLoading: templatesLoading
+      },
+      {
+        label: "Generated Sites",
+        value: totalSites.toString(),
+        icon: FolderOutput,
+        change: recentSites > 0 ? `+${recentSites} this month` : "No recent activity",
+        isLoading: sitesLoading
+      },
+      {
+        label: "Time Saved",
+        value: `${timeSaved}h`,
+        icon: Clock,
+        change: "vs manual builds",
+        isLoading: sitesLoading
+      },
+    ];
+  }, [templates, sites, templatesLoading, sitesLoading]);
+
+  // Get recent activity from sites and templates
+  const recentActivity = useMemo(() => {
+    const activities: Array<{ type: string; name: string; template: string | null; time: string; date: Date }> = [];
+
+    // Add recent sites
+    sites.slice(0, 3).forEach(site => {
+      const createdDate = new Date(site.createdAt);
+      activities.push({
+        type: "generated",
+        name: site.clientDetails?.companyName || site.slug,
+        template: site.templateName,
+        time: getRelativeTime(createdDate),
+        date: createdDate
+      });
+    });
+
+    // Add recently uploaded templates
+    templates
+      .filter(t => t.status === 'ready')
+      .slice(0, 2)
+      .forEach(template => {
+        const createdDate = new Date(template.createdAt);
+        activities.push({
+          type: "template",
+          name: template.name,
+          template: null,
+          time: getRelativeTime(createdDate),
+          date: createdDate
+        });
+      });
+
+    // Sort by date, most recent first
+    return activities.sort((a, b) => b.date.getTime() - a.date.getTime()).slice(0, 4);
+  }, [sites, templates]);
+
+  const getRelativeTime = (date: Date): string => {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffHours < 1) return "Just now";
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7) return `${diffDays} days ago`;
+    return date.toLocaleDateString();
+  };
+
   return (
     <AppLayout>
       <div className="p-8 space-y-8">
@@ -46,19 +129,27 @@ export default function Dashboard() {
           {stats.map((stat) => (
             <Card key={stat.label} className="glass border-card-border hover:border-primary/30 transition-colors" data-testid={`stat-${stat.label.toLowerCase()}`}>
               <CardContent className="p-6">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground font-medium">{stat.label}</p>
-                    <p className="text-4xl font-display font-bold text-foreground mt-2">{stat.value}</p>
-                    <p className="text-xs text-primary flex items-center gap-1 mt-2">
-                      <TrendingUp className="w-3 h-3" />
-                      {stat.change}
-                    </p>
+                {stat.isLoading ? (
+                  <div className="animate-pulse">
+                    <div className="h-4 bg-muted rounded w-20 mb-4"></div>
+                    <div className="h-10 bg-muted rounded w-16 mb-2"></div>
+                    <div className="h-3 bg-muted rounded w-24"></div>
                   </div>
-                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <stat.icon className="w-6 h-6 text-primary" />
+                ) : (
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground font-medium">{stat.label}</p>
+                      <p className="text-4xl font-display font-bold text-foreground mt-2">{stat.value}</p>
+                      <p className="text-xs text-primary flex items-center gap-1 mt-2">
+                        <TrendingUp className="w-3 h-3" />
+                        {stat.change}
+                      </p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                      <stat.icon className="w-6 h-6 text-primary" />
+                    </div>
                   </div>
-                </div>
+                )}
               </CardContent>
             </Card>
           ))}
