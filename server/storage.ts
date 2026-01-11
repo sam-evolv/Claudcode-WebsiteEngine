@@ -18,11 +18,20 @@ import { dirname } from "path";
 
 const DATABASE_PATH = process.env.DATABASE_URL || "./data/database.db";
 
-// Ensure data directory exists
-await mkdir(dirname(DATABASE_PATH), { recursive: true });
+// Initialize storage - ensure data directory exists
+let db: ReturnType<typeof drizzle>;
+let isInitialized = false;
 
-const sqlite = new Database(DATABASE_PATH);
-export const db = drizzle(sqlite, { schema });
+export async function initStorage() {
+  if (isInitialized) return;
+
+  await mkdir(dirname(DATABASE_PATH), { recursive: true });
+  const sqlite = new Database(DATABASE_PATH);
+  db = drizzle(sqlite, { schema });
+  isInitialized = true;
+}
+
+export { db };
 
 export interface IStorage {
   // Users

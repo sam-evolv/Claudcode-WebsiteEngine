@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import { storage, initStorage } from "./storage";
 import multer from "multer";
 import { join } from "path";
 import { unlink } from "fs/promises";
@@ -23,9 +23,6 @@ import {
 } from "./template-analyzer";
 import { GenerationEngine } from "./generation-engine";
 
-// Ensure data directories exist on startup
-await ensureDataDirectories();
-
 // Configure multer for file uploads
 const upload = multer({
   dest: UPLOADS_DIR,
@@ -38,6 +35,9 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // Initialize storage and ensure data directories exist
+  await initStorage();
+  await ensureDataDirectories();
   // ==================== TEMPLATES ====================
 
   // Get all templates
