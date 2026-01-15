@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,99 +7,106 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { 
-  Upload, 
-  Search, 
-  Layers, 
-  CheckCircle2, 
+import {
+  Upload,
+  Search,
+  Layers,
+  CheckCircle2,
   XCircle,
   Clock,
   Tag,
   Code,
   ExternalLink,
-  MoreVertical
+  MoreVertical,
+  Trash2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-interface Template {
-  id: string;
-  name: string;
-  description: string;
-  tags: string[];
-  frameworkType: string;
-  status: 'ready' | 'processing' | 'error';
-  createdAt: string;
-  usageCount: number;
-}
-
-const mockTemplates: Template[] = [
-  {
-    id: "trade-premium-dark",
-    name: "Trade Premium Dark",
-    description: "A sophisticated dark-themed template perfect for trade businesses like plumbers, electricians, and contractors.",
-    tags: ["trade", "premium", "dark", "one-page"],
-    frameworkType: "nextjs-app",
-    status: "ready",
-    createdAt: "2024-01-15",
-    usageCount: 12
-  },
-  {
-    id: "clean-light-business",
-    name: "Clean Light Business",
-    description: "Minimalist light theme with professional layouts for service-based businesses.",
-    tags: ["business", "light", "clean", "multi-page"],
-    frameworkType: "nextjs-app",
-    status: "ready",
-    createdAt: "2024-01-10",
-    usageCount: 8
-  },
-  {
-    id: "modern-saas-landing",
-    name: "Modern SaaS Landing",
-    description: "Conversion-focused landing page template for software products and SaaS companies.",
-    tags: ["saas", "tech", "gradient", "one-page"],
-    frameworkType: "nextjs-static",
-    status: "ready",
-    createdAt: "2024-01-08",
-    usageCount: 5
-  },
-  {
-    id: "restaurant-showcase",
-    name: "Restaurant Showcase",
-    description: "Elegant template for restaurants with menu sections, gallery, and reservation integration.",
-    tags: ["restaurant", "hospitality", "elegant", "multi-page"],
-    frameworkType: "nextjs-app",
-    status: "processing",
-    createdAt: "2024-01-20",
-    usageCount: 0
-  },
-  {
-    id: "real-estate-pro",
-    name: "Real Estate Pro",
-    description: "Property listing template with search filters and agent profiles.",
-    tags: ["real-estate", "property", "listings", "multi-page"],
-    frameworkType: "vite-react",
-    status: "error",
-    createdAt: "2024-01-18",
-    usageCount: 0
-  }
-];
+import { useTemplates, useUploadTemplate, useDeleteTemplate } from "@/lib/api";
+import { toast } from "sonner";
 
 export default function Templates() {
-  const [templates] = useState<Template[]>(mockTemplates);
+  const { data: templates = [], isLoading } = useTemplates();
+  const uploadMutation = useUploadTemplate();
+  const deleteMutation = useDeleteTemplate();
+
   const [searchQuery, setSearchQuery] = useState("");
   const [isUploadOpen, setIsUploadOpen] = useState(false);
-  const [uploadState, setUploadState] = useState<'idle' | 'uploading' | 'analyzing' | 'success' | 'error'>('idle');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [formData, setFormData] = useState({
+    name: "",
+    description: "",
+    tags: "",
+  });
 
-  const filteredTemplates = templates.filter(t => 
+  const filteredTemplates = templates.filter(t =>
     t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     t.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  const handleUpload = () => {
-    setUploadState('uploading');
-    setTimeout(() => setUploadState('analyzing'), 1500);
-    setTimeout(() => setUploadState('success'), 3500);
+  const [isDragging, setIsDragging] = React.useState(false);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedFile(e.target.files[0]);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (files && files[0]) {
+      if (files[0].name.endsWith('.zip')) {
+        setSelectedFile(files[0]);
+      } else {
+        toast.error("Please upload a ZIP file");
+      }
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!selectedFile || !formData.name || !formData.description) {
+      toast.error("Please fill in all required fields and select a file");
+      return;
+    }
+
+    try {
+      await uploadMutation.mutateAsync({
+        file: selectedFile,
+        ...formData,
+      });
+
+      toast.success("Template uploaded successfully! Processing...");
+      setIsUploadOpen(false);
+      setSelectedFile(null);
+      setFormData({ name: "", description: "", tags: "" });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Upload failed");
+    }
+  };
+
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to delete "${name}"?`)) {
+      return;
+    }
+
+    try {
+      await deleteMutation.mutateAsync(id);
+      toast.success("Template deleted successfully");
+    } catch (error) {
+      toast.error("Failed to delete template");
+    }
   };
 
   const getStatusBadge = (status: Template['status']) => {
@@ -147,68 +154,120 @@ export default function Templates() {
                   Upload a zip file of your website codebase to convert it into a reusable template.
                 </DialogDescription>
               </DialogHeader>
-              
-              {uploadState === 'idle' && (
-                <div className="space-y-6 pt-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="template-name">Template Name</Label>
-                    <Input id="template-name" placeholder="e.g., Premium Trade Dark" data-testid="input-template-name" />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="template-description">Description</Label>
-                    <Textarea id="template-description" placeholder="Describe what this template is best used for..." data-testid="input-template-description" />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="template-tags">Tags (comma-separated)</Label>
-                    <Input id="template-tags" placeholder="trade, premium, dark, one-page" data-testid="input-template-tags" />
-                  </div>
-                  
-                  <div 
-                    className="border-2 border-dashed border-muted rounded-xl p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all"
-                    onClick={handleUpload}
-                    data-testid="dropzone-upload"
+
+              <div className="space-y-6 pt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="template-name">Template Name *</Label>
+                  <Input
+                    id="template-name"
+                    placeholder="e.g., Premium Trade Dark"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    data-testid="input-template-name"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="template-description">Description *</Label>
+                  <Textarea
+                    id="template-description"
+                    placeholder="Describe what this template is best used for..."
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    data-testid="input-template-description"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="template-tags">Tags (comma-separated)</Label>
+                  <Input
+                    id="template-tags"
+                    placeholder="trade, premium, dark, one-page"
+                    value={formData.tags}
+                    onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+                    data-testid="input-template-tags"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="template-file">Template File (ZIP) *</Label>
+                  <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    className={cn(
+                      "border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer",
+                      isDragging
+                        ? "border-primary bg-primary/5 scale-[1.02]"
+                        : "border-muted hover:border-primary/50 hover:bg-primary/5",
+                      selectedFile && "border-primary bg-primary/5"
+                    )}
+                    onClick={() => document.getElementById('template-file')?.click()}
                   >
-                    <Upload className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-                    <p className="text-sm text-muted-foreground">
-                      <span className="text-primary font-medium">Click to upload</span> or drag and drop
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">ZIP files up to 100MB</p>
+                    <input
+                      id="template-file"
+                      type="file"
+                      accept=".zip"
+                      onChange={handleFileChange}
+                      className="hidden"
+                      data-testid="input-template-file"
+                    />
+                    {selectedFile ? (
+                      <div className="space-y-2">
+                        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
+                          <Upload className="w-6 h-6 text-primary" />
+                        </div>
+                        <p className="font-medium text-foreground">{selectedFile.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                        </p>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedFile(null);
+                          }}
+                        >
+                          Change File
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <Upload className="w-10 h-10 text-muted-foreground mx-auto" />
+                        <div>
+                          <p className="text-sm text-foreground font-medium">
+                            <span className="text-primary">Click to upload</span> or drag and drop
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            ZIP files up to 100MB
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-              )}
-              
-              {uploadState === 'uploading' && (
-                <div className="py-12 text-center">
-                  <div className="w-16 h-16 rounded-full border-4 border-primary/20 border-t-primary animate-spin mx-auto mb-4" />
-                  <p className="font-medium text-foreground">Uploading template...</p>
-                  <p className="text-sm text-muted-foreground mt-1">Please wait while we upload your files</p>
-                </div>
-              )}
-              
-              {uploadState === 'analyzing' && (
-                <div className="py-12 text-center">
-                  <div className="w-16 h-16 rounded-xl bg-primary/10 flex items-center justify-center mx-auto mb-4 animate-pulse">
-                    <Code className="w-8 h-8 text-primary" />
-                  </div>
-                  <p className="font-medium text-foreground">Analyzing codebase...</p>
-                  <p className="text-sm text-muted-foreground mt-1">Detecting framework, theme variables, and content structure</p>
-                </div>
-              )}
-              
-              {uploadState === 'success' && (
-                <div className="py-12 text-center">
-                  <div className="w-16 h-16 rounded-full bg-chart-2/10 flex items-center justify-center mx-auto mb-4">
-                    <CheckCircle2 className="w-8 h-8 text-chart-2" />
-                  </div>
-                  <p className="font-medium text-foreground">Template created successfully!</p>
-                  <p className="text-sm text-muted-foreground mt-1">Your template is now ready for use</p>
-                  <Button className="mt-6" onClick={() => { setIsUploadOpen(false); setUploadState('idle'); }} data-testid="button-close-success">
-                    Done
-                  </Button>
-                </div>
-              )}
+
+                <Button
+                  className="w-full"
+                  onClick={handleUpload}
+                  disabled={uploadMutation.isPending || !selectedFile || !formData.name || !formData.description}
+                  data-testid="button-upload"
+                >
+                  {uploadMutation.isPending ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-background/20 border-t-background animate-spin rounded-full mr-2" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4 mr-2" />
+                      Upload Template
+                    </>
+                  )}
+                </Button>
+              </div>
             </DialogContent>
           </Dialog>
         </div>
@@ -231,29 +290,50 @@ export default function Templates() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {filteredTemplates.map((template) => (
-            <Card 
-              key={template.id} 
-              className={cn(
-                "glass border-card-border hover:border-primary/30 transition-all group",
-                template.status === 'error' && "border-destructive/30"
-              )}
-              data-testid={`template-card-${template.id}`}
-            >
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="font-display text-lg flex items-center gap-2">
-                      {template.name}
-                      {getStatusBadge(template.status)}
-                    </CardTitle>
-                    <CardDescription className="mt-1 line-clamp-2">{template.description}</CardDescription>
+          {isLoading ? (
+            <div className="col-span-2 text-center py-12">
+              <div className="w-16 h-16 rounded-full border-4 border-primary/20 border-t-primary animate-spin mx-auto mb-4" />
+              <p className="text-muted-foreground">Loading templates...</p>
+            </div>
+          ) : filteredTemplates.length === 0 ? (
+            <div className="col-span-2 text-center py-12">
+              <Layers className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+              <p className="text-foreground font-medium">No templates found</p>
+              <p className="text-sm text-muted-foreground mt-1">Upload your first template to get started</p>
+            </div>
+          ) : (
+            filteredTemplates.map((template) => (
+              <Card
+                key={template.id}
+                className={cn(
+                  "glass border-card-border hover:border-primary/30 transition-all group",
+                  template.status === 'error' && "border-destructive/30"
+                )}
+                data-testid={`template-card-${template.id}`}
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <CardTitle className="font-display text-lg flex items-center gap-2">
+                        {template.name}
+                        {getStatusBadge(template.status)}
+                      </CardTitle>
+                      <CardDescription className="mt-1 line-clamp-2">{template.description}</CardDescription>
+                      {template.statusMessage && (
+                        <p className="text-xs text-destructive mt-1">{template.statusMessage}</p>
+                      )}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity hover:text-destructive"
+                      onClick={() => handleDelete(template.id, template.name)}
+                      data-testid={`button-delete-${template.id}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
                   </div>
-                  <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity" data-testid={`button-template-menu-${template.id}`}>
-                    <MoreVertical className="w-4 h-4" />
-                  </Button>
-                </div>
-              </CardHeader>
+                </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex flex-wrap gap-2">
                   {template.tags.map((tag) => (
@@ -286,7 +366,7 @@ export default function Templates() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+          )))}
         </div>
       </div>
     </AppLayout>
